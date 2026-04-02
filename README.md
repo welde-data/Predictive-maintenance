@@ -4,7 +4,7 @@ End-to-end data engineering and ML pipeline built on Databricks, with an AI-powe
 
 ## Live Demo
 
-[predmaint.streamlit.app](https://your-app.streamlit.app) ← update after deploy
+[predmaint.streamlit.app](https://predictive-maintenance-gwxfcbgjkmlkgszgjkoqzq.streamlit.app/) ← update after deploy
 
 ## Architecture
 

@@ -122,18 +122,37 @@ section[data-testid="stSidebar"] [data-testid="stFileUploader"] button{{
     background:{SURFACE}!important;color:{AMBER}!important;border:1px solid {AMBER}!important;
     border-radius:4px!important;font-size:0.68rem!important;padding:6px 10px!important;width:auto!important}}
 
-/* ── Tabs ── */
+/* ── Tabs — high contrast, clearly distinct ── */
 [data-testid="stTabs"] [role="tablist"]{{
-    border-bottom:2px solid {BORDER}!important;background:transparent!important;gap:0!important}}
+    border-bottom:2px solid {BORDER}!important;
+    background:{SURFACE}!important;
+    gap:0!important;
+    border-radius:8px 8px 0 0!important;
+    padding:4px 4px 0!important}}
 [data-testid="stTabs"] [role="tab"]{{
-    font-family:'DM Mono',monospace!important;font-size:0.82rem!important;
-    letter-spacing:0.06em!important;text-transform:uppercase!important;color:{DIM}!important;
-    background:transparent!important;border:none!important;padding:14px 22px!important;font-weight:600!important}}
-[data-testid="stTabs"] [role="tab"]:hover{{color:{BODY}!important}}
+    font-family:'DM Mono',monospace!important;
+    font-size:0.78rem!important;
+    letter-spacing:0.08em!important;
+    text-transform:uppercase!important;
+    color:{SUB}!important;
+    background:transparent!important;
+    border:none!important;
+    border-radius:6px 6px 0 0!important;
+    padding:12px 20px!important;
+    font-weight:600!important;
+    transition:all 0.15s!important}}
+[data-testid="stTabs"] [role="tab"]:hover{{
+    color:{INK}!important;
+    background:{BORDER}!important}}
 [data-testid="stTabs"] [aria-selected="true"]{{
-    color:{AMBER}!important;border-bottom:3px solid {AMBER}!important;
-    font-weight:800!important;font-size:0.88rem!important}}
-[data-testid="stTabs"] [role="tabpanel"]{{background:transparent!important;padding-top:22px!important}}
+    color:{WHITE}!important;
+    background:{AMBER}!important;
+    border-bottom:none!important;
+    font-weight:800!important;
+    font-size:0.82rem!important}}
+[data-testid="stTabs"] [role="tabpanel"]{{
+    background:transparent!important;
+    padding-top:22px!important}}
 
 /* ── Form controls ── */
 [data-testid="stSelectbox"] label p,[data-testid="stTextInput"] label p,
@@ -396,6 +415,12 @@ def ask_data(question, df, threshold):
     fn   = int(((df["prediction"]==0)&(df["machine_failure"]==1)).sum())
     tn   = int(((df["prediction"]==0)&(df["machine_failure"]==0)).sum())
     acc  = (df["prediction"].astype(int)==df["machine_failure"].astype(int)).mean()
+    # Compute threshold counts so Gemini can answer any "above X%" question
+    above_80  = int((df["prob_failure"] >= 0.80).sum())
+    above_90  = int((df["prob_failure"] >= 0.90).sum())
+    above_95  = int((df["prob_failure"] >= 0.95).sum())
+    above_50  = int((df["prob_failure"] >= 0.50).sum())
+    above_30  = int((df["prob_failure"] >= 0.30).sum())
     vctx = ""
     if os.path.exists("data/voice_maintenance_log.csv"):
         try:
@@ -406,11 +431,25 @@ def ask_data(question, df, threshold):
             pass
     return gemini(
         f"You are a data analyst for a predictive maintenance dashboard. "
-        f"Answer concisely in plain English. No markdown symbols.\n\n"
-        f"Data: {len(df)} machines | threshold P>={threshold:.2f} | "
-        f"High:{high} Med:{med} Low:{low} | Failures:{int(df['machine_failure'].sum())} | "
-        f"Avg:{df['prob_failure'].mean():.1%} | Acc:{acc:.1%} | TP:{tp} FP:{fp} FN:{fn} TN:{tn}\n"
-        f"Top 5: {top5}{vctx}\n\n"
+        f"Answer concisely in plain English. No markdown symbols. "
+        f"Use the exact numbers from the data below — do not say 'data not provided'.\n\n"
+        f"Dataset summary:\n"
+        f"- Total machines scored: {len(df)}\n"
+        f"- Risk threshold in use: P >= {threshold:.2f}\n"
+        f"- High risk (P >= 0.55): {high} machines\n"
+        f"- Medium risk (0.30-0.55): {med} machines\n"
+        f"- Low risk (P < 0.30): {low} machines\n"
+        f"- Machines with P >= 0.80: {above_80}\n"
+        f"- Machines with P >= 0.90: {above_90}\n"
+        f"- Machines with P >= 0.95: {above_95}\n"
+        f"- Machines with P >= 0.50: {above_50}\n"
+        f"- Machines with P >= 0.30: {above_30}\n"
+        f"- Confirmed failures in dataset: {int(df['machine_failure'].sum())}\n"
+        f"- Average failure probability: {df['prob_failure'].mean():.1%}\n"
+        f"- Max failure probability: {df['prob_failure'].max():.1%}\n"
+        f"- Model accuracy: {acc:.1%} | TP: {tp} | FP: {fp} | FN: {fn} | TN: {tn}\n"
+        f"- Precision: {tp/(tp+fp) if (tp+fp)>0 else 0:.1%} | Recall: {tp/(tp+fn) if (tp+fn)>0 else 0:.1%}\n"
+        f"Top 5 machines by risk:\n{top5}{vctx}\n\n"
         f"Question: {question}"
     )
 
@@ -636,7 +675,7 @@ sb_hr()
 sb(f"<p style='font-family:DM Mono,monospace;font-size:0.58rem;letter-spacing:0.2em;"
    f"text-transform:uppercase;color:{DIM};margin:0 0 8px;font-weight:600'>Upload Predictions</p>")
 uploaded_file = st.sidebar.file_uploader(
-    "Drop predictions.csv", type=["csv"], label_visibility="collapsed",
+    "predictions.csv", type=["csv"], label_visibility="collapsed",
 )
 sb_hr()
 if st.sidebar.button("Refresh data"):
@@ -717,16 +756,24 @@ with tab1:
     else:
         banner("No machines in HIGH risk tier at the current threshold.", GREEN, "#E8F5EE")
 
-    lc,rc = st.columns([1.1,1], gap="large")
-    with lc:
-        top_k = st.number_input("Machines to show", min_value=5, max_value=50, value=10, step=5)
-        top_df = df.sort_values("prob_failure",ascending=False).head(top_k).reset_index(drop=True)
-        top_df.index += 1
-        top_machine_opts = [f"M-{int(u)}" for u in top_df["udi"].tolist()]
-        section(f"Top {top_k} machines · ranked by failure probability")
+    # ── Controls row ─────────────────────────────────────────────
+    ctrl1, ctrl2, ctrl3 = st.columns([1, 4, 1])
+    with ctrl1:
+        top_k = st.selectbox("Show top", options=[5,10,15,20], index=1, key="top_k_sel")
+    with ctrl3:
+        gen_report = st.button("Generate Shift Report", key="btn_report")
 
+    top_df = df.sort_values("prob_failure",ascending=False).head(top_k).reset_index(drop=True)
+    top_df.index += 1
+    top_machine_opts = [f"M-{int(u)}" for u in top_df["udi"].tolist()]
+
+    # ── Main row: compact table LEFT, chart RIGHT ─────────────────
+    lc, rc = st.columns([1.05, 1], gap="large")
+
+    with lc:
+        section(f"Top {top_k} machines · ranked by failure probability")
         rows_html = ""
-        for rank,row in top_df.iterrows():
+        for rank, row in top_df.iterrows():
             tier   = str(row["risk_tier"]); prob = row["prob_failure"]
             actual = "FAILED" if row["machine_failure"]==1 else "—"
             ac     = RED if row["machine_failure"]==1 else DIM
@@ -734,49 +781,52 @@ with tab1:
             bw     = int(prob*100)
             rows_html += (
                 f"<tr style='border-bottom:1px solid {BORDER}'>"
-                f"<td style='padding:11px 14px;font-family:DM Mono,monospace;font-size:0.72rem;color:{DIM}'>{rank:02d}</td>"
-                f"<td style='padding:11px 14px;font-family:Syne,sans-serif;font-size:1rem;color:{INK};font-weight:700'>M-{int(row['udi'])}</td>"
-                f"<td style='padding:11px 14px'>"
-                f"<span style='color:{bc};font-family:DM Mono,monospace;font-weight:700;font-size:0.82rem'>{tier}</span>"
-                f"<span style='font-family:DM Mono,monospace;font-size:0.76rem;color:{MED};margin-left:8px'>{prob:.1%}</span>"
-                f"<div style='margin-top:5px;width:90px;height:3px;background:{BORDER};border-radius:2px'>"
-                f"<div style='width:{bw}%;height:3px;background:{bc};border-radius:2px'></div></div></td>"
-                f"<td style='padding:11px 14px;font-family:DM Mono,monospace;font-size:0.78rem;color:{ac};font-weight:600'>{actual}</td>"
+                f"<td style='padding:7px 12px;font-family:DM Mono,monospace;font-size:0.68rem;color:{DIM}'>{rank:02d}</td>"
+                f"<td style='padding:7px 12px;font-family:Syne,sans-serif;font-size:0.9rem;color:{INK};font-weight:700'>M-{int(row['udi'])}</td>"
+                f"<td style='padding:7px 12px'>"
+                f"<span style='color:{bc};font-family:DM Mono,monospace;font-weight:700;font-size:0.76rem'>{tier}</span>"
+                f"<span style='font-family:DM Mono,monospace;font-size:0.7rem;color:{MED};margin-left:6px'>{prob:.1%}</span>"
+                f"<div style='margin-top:3px;width:80px;height:2px;background:{BORDER};border-radius:2px'>"
+                f"<div style='width:{bw}%;height:2px;background:{bc};border-radius:2px'></div></div></td>"
+                f"<td style='padding:7px 12px;font-family:DM Mono,monospace;font-size:0.72rem;color:{ac};font-weight:600'>{actual}</td>"
                 f"</tr>"
             )
         st.markdown(
             f"<table style='width:100%;border-collapse:collapse;background:{CARD};"
             f"border:1px solid {BORDER};border-radius:10px;overflow:hidden'>"
             f"<thead><tr style='background:{SURFACE};border-bottom:2px solid {BORDER2}'>"
-            f"<th style='padding:10px 14px;text-align:left;font-family:DM Mono,monospace;font-size:0.54rem;letter-spacing:0.2em;color:{SUB};font-weight:700'>#</th>"
-            f"<th style='padding:10px 14px;text-align:left;font-family:DM Mono,monospace;font-size:0.54rem;letter-spacing:0.2em;color:{SUB};font-weight:700'>MACHINE ID</th>"
-            f"<th style='padding:10px 14px;text-align:left;font-family:DM Mono,monospace;font-size:0.54rem;letter-spacing:0.2em;color:{SUB};font-weight:700'>RISK</th>"
-            f"<th style='padding:10px 14px;text-align:left;font-family:DM Mono,monospace;font-size:0.54rem;letter-spacing:0.2em;color:{SUB};font-weight:700'>ACTUAL</th>"
+            f"<th style='padding:7px 12px;text-align:left;font-family:DM Mono,monospace;font-size:0.5rem;letter-spacing:0.2em;color:{SUB};font-weight:700'>#</th>"
+            f"<th style='padding:7px 12px;text-align:left;font-family:DM Mono,monospace;font-size:0.5rem;letter-spacing:0.2em;color:{SUB};font-weight:700'>MACHINE ID</th>"
+            f"<th style='padding:7px 12px;text-align:left;font-family:DM Mono,monospace;font-size:0.5rem;letter-spacing:0.2em;color:{SUB};font-weight:700'>RISK</th>"
+            f"<th style='padding:7px 12px;text-align:left;font-family:DM Mono,monospace;font-size:0.5rem;letter-spacing:0.2em;color:{SUB};font-weight:700'>ACTUAL</th>"
             f"</tr></thead><tbody>{rows_html}</tbody></table>",
             unsafe_allow_html=True,
         )
 
-        st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-        section("Machine explainer")
-        e1,e2 = st.columns([6,1])
-        with e1:
-            sel_mid = st.selectbox("Select machine", top_machine_opts,
+        # Machine explainer — compact
+        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+        ex1, ex2, ex3 = st.columns([4, 1, 1])
+        with ex1:
+            sel_mid = st.selectbox("Machine", top_machine_opts,
                                    key="explainer_uid", label_visibility="collapsed")
-        with e2:
+        with ex2:
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+            explain_clicked = st.button("Explain", key="btn_explain")
+        with ex3:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
             v_sel = voice_select("mic_explainer_sel", top_machine_opts)
             if v_sel:
                 st.session_state["explainer_uid"] = top_machine_opts.index(v_sel)
                 st.rerun()
 
-        if st.button("Explain this machine", key="btn_explain"):
+        if explain_clicked:
             uid_num = int(sel_mid.replace("M-",""))
             sel_row = top_df[top_df["udi"]==uid_num].iloc[0].to_dict()
             with st.spinner("Analysing…"):
                 ai_box(explain_machine(sel_row, n_total, n_at_risk, df["prob_failure"].mean()))
 
     with rc:
-        cdf  = top_df.head(min(10,len(top_df)))
+        cdf   = top_df.head(min(top_k, len(top_df)))
         probs = cdf["prob_failure"].tolist()
         def prob_color(p):
             return RED if p>=0.75 else AMBER if p>=0.45 else GREEN
@@ -789,30 +839,40 @@ with tab1:
                         line=dict(width=0)),
             text=[f"{p:.1%}" for p in probs],
             textposition="outside",
-            textfont=dict(family="DM Mono, monospace", size=11, color=INK),
+            textfont=dict(family="DM Mono, monospace", size=10, color=INK),
         ))
         fig.add_vline(x=risk_threshold, line_dash="dot", line_color=AMBER, line_width=1.5,
-                      annotation_text=f"threshold {risk_threshold:.2f}",
+                      annotation_text=f"P≥{risk_threshold:.2f}",
                       annotation_font=dict(size=9, color=AMBER, family="DM Mono, monospace"))
         ply(fig,
             title=dict(text="Failure probability by machine ID",
-                       font=dict(size=11, color=MED, family="DM Mono, monospace")),
-            xaxis=dict(tickformat=".0%", range=[0,1.15], **ax()),
+                       font=dict(size=11, color=SUB, family="DM Mono, monospace")),
+            xaxis=dict(tickformat=".0%", range=[0,1.2], **ax()),
             yaxis=dict(autorange="reversed", type="category",
-                       tickfont=dict(size=12, color=INK, family="DM Mono, monospace"),
+                       tickfont=dict(size=11, color=INK, family="DM Mono, monospace"),
                        gridcolor=BORDER, zerolinecolor=BORDER, color=MED),
-            height=400, showlegend=False,
+            height=max(180, len(cdf)*34),
+            showlegend=False,
         )
         st.plotly_chart(fig, use_container_width=True)
 
+    # ── Shift report — full width below ──────────────────────────
+    if gen_report:
+        with st.spinner("Gemini writing shift report…"):
+            report = shift_report(df, int(top_k), risk_threshold)
+        st.session_state["last_shift_report"] = report
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         section("Shift report")
-        if st.button("Generate shift report", key="btn_report"):
-            with st.spinner("Writing…"):
-                report = shift_report(df, int(top_k), risk_threshold)
-            st.session_state["last_shift_report"] = report
-            ai_box(report)
-            st.download_button("Download report", data=report.encode(),
-                               file_name="shift_report.txt", mime="text/plain")
+        ai_box(report)
+        st.download_button("Download report", data=report.encode(),
+                           file_name="shift_report.txt", mime="text/plain")
+    elif st.session_state.get("last_shift_report"):
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        section("Shift report")
+        ai_box(st.session_state["last_shift_report"])
+        st.download_button("Download report",
+                           data=st.session_state["last_shift_report"].encode(),
+                           file_name="shift_report.txt", mime="text/plain")
 
 # ══════════════════════════════════════════════
 # TAB 2 — Analysis
@@ -830,7 +890,7 @@ with tab2:
                      annotation_font=dict(size=9, color=AMBER, family="DM Mono, monospace"))
         ply(fh, title=dict(text="P(failure) distribution",
                            font=dict(size=12,color=INK,family="DM Mono, monospace")),
-            xaxis=ax_t("P(failure)",tickformat=".0%"), yaxis=ax_t("Machines"), height=280)
+            xaxis=ax_t("P(failure)",tickformat=".0%"), yaxis=ax_t("Machines"), height=240)
         st.plotly_chart(fh, use_container_width=True)
 
     with c2:
@@ -855,7 +915,7 @@ with tab2:
                 font=dict(family="DM Mono, monospace", size=11, color=INK),
                 bgcolor="rgba(0,0,0,0)",
             ),
-            height=280, showlegend=True,
+            height=240, showlegend=True,
         )
         st.plotly_chart(fd, use_container_width=True)
         # Summary counts below chart so small slices are always visible
@@ -884,7 +944,7 @@ with tab2:
             colorscale=[[0,WHITE],[0.4,"#C8ECD8"],[1,GREEN]], showscale=False,
             text=[[f"{tn}",f"{fp}"],[f"{fn}",f"{tp}"]], texttemplate="%{text}",
             textfont=dict(family="DM Mono, monospace",size=24,color=INK)))
-        ply(fcm, xaxis=dict(side="bottom",**ax()), yaxis=ax(), height=280)
+        ply(fcm, xaxis=dict(side="bottom",**ax()), yaxis=ax(), height=240)
         st.plotly_chart(fcm, use_container_width=True)
 
     with cm2:
@@ -898,7 +958,7 @@ with tab2:
                                 textfont=dict(family="DM Mono, monospace",size=12,color=INK),
                                 showlegend=False))
         ply(fm, xaxis=dict(range=[0,1.2],tickformat=".0%",**ax()),
-            yaxis=ax(), height=280, barmode="overlay")
+            yaxis=ax(), height=240, barmode="overlay")
         st.plotly_chart(fm, use_container_width=True)
 
     section("Prediction breakdown")
@@ -934,26 +994,63 @@ with tab2:
 # ══════════════════════════════════════════════
 with tab3:
     section("Ask the data — Gemini 2.0 Flash")
-    st.markdown(f"<p style='font-family:DM Sans,sans-serif;font-size:0.88rem;color:{MED};"
-                f"margin:0 0 20px;line-height:1.7'>Ask any question about the current batch scoring results.</p>",
-                unsafe_allow_html=True)
-    examples = ["How many machines are in the high risk tier?",
-                "What percentage of machines have above 80% failure probability?",
-                "How reliable is the model?",
-                "Are there more false negatives or false positives?"]
-    ec = st.columns(2)
-    for i,ex in enumerate(examples):
-        with ec[i%2]:
-            if st.button(ex, key=f"ex_{i}"):
-                with st.spinner("Analysing…"):
-                    ai_box(f"Q: {ex}\n\n{ask_data(ex, df, risk_threshold)}")
-    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-    section("Custom question")
-    uq = st.text_input("Question", placeholder="e.g. How many machines have probability above 90%?",
-                       key="custom_q", label_visibility="collapsed")
-    if st.button("Ask Gemini", key="btn_ask") and uq.strip():
-        with st.spinner("Analysing…"):
-            ai_box(f"Q: {uq}\n\n{ask_data(uq, df, risk_threshold)}")
+
+    example_questions = [
+        "Choose a suggested question or write your own below…",
+        "How many machines are in the high risk tier?",
+        "What percentage of machines have above 80% failure probability?",
+        "How reliable is the model — precision vs recall trade-off?",
+        "Are there more false negatives or false positives?",
+        "If I only have 2 technicians this shift, which 3 machines should I prioritize and why?",
+        "What would happen if we used time-based replacement instead of this predictive model?",
+    ]
+
+    ai_q1, ai_q2 = st.columns([3, 1], gap="medium")
+    with ai_q1:
+        selected_q = st.selectbox(
+            "Suggested questions",
+            options=example_questions,
+            key="suggested_q",
+            label_visibility="collapsed",
+        )
+    with ai_q2:
+        use_suggestion = st.button(
+            "Ask →", key="btn_suggestion",
+            disabled=(selected_q == example_questions[0]),
+        )
+
+    st.markdown(
+        f"<p style='font-family:DM Mono,monospace;font-size:0.62rem;"
+        f"color:{DIM};margin:8px 0;letter-spacing:0.1em'>— OR WRITE YOUR OWN —</p>",
+        unsafe_allow_html=True,
+    )
+
+    cq1, cq2 = st.columns([5, 1], gap="small")
+    with cq1:
+        custom_q = st.text_input(
+            "Your question",
+            placeholder="e.g. Which failure mode is most common in high risk machines?",
+            key="custom_q",
+            label_visibility="collapsed",
+        )
+    with cq2:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        ask_custom = st.button("Ask →", key="btn_ask_custom")
+
+    # Determine what to ask
+    final_q = None
+    if use_suggestion and selected_q != example_questions[0]:
+        final_q = selected_q
+    elif ask_custom and custom_q.strip():
+        final_q = custom_q.strip()
+    elif ask_custom:
+        st.warning("Please type a question first.")
+
+    if final_q:
+        with st.spinner("Gemini is thinking…"):
+            result = ask_data(final_q, df, risk_threshold)
+        ai_box(f"{final_q}\n\n{result}")
+
     if not GEMINI_OK:
         banner("GEMINI_API_KEY not set. Add it to Streamlit Cloud Settings → Secrets.", AMBER, "#FFF8E7")
 
