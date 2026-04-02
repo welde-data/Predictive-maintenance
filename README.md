@@ -4,7 +4,7 @@ End-to-end data engineering and ML pipeline built on Databricks, with an AI-powe
 
 ## Live Demo
 
-[predmaint.streamlit.app](https://predictive-maintenance-gwxfcbgjkmlkgszgjkoqzq.streamlit.app/) ← update after deploy
+[predmaint.streamlit.app](https://predictive-maintenance-gwxfcbgjkmlkgszgjkoqzq.streamlit.app/)
 
 ## Architecture
 
@@ -106,9 +106,10 @@ After each Databricks pipeline run:
 
 ```
 predmaint/
-├── app.py                       Streamlit dashboard
+├── app.py                     #Streamlit dashboard
 ├── requirements.txt
 ├── README.md
+├──LICENSE 
 ├── .gitignore
 ├── notebooks/
 │   ├── 01_bronze_ingest.py
@@ -116,7 +117,13 @@ predmaint/
 │   ├── 03_gold_features.py
 │   └── 04_train_and_score.py
 ├── data/
-│   └── predictions.csv          exported from Databricks
+│   ├── voice_maintenance_log.csv 
+│   └── predictions.csv        #exported from Databricks
 └── .streamlit/
-    └── config.toml              dark theme
+    └── config.toml              # theme
 ```
+
+#### Disclaimer
+
+This project is built on the publicly available AI4I 2020 Predictive Maintenance Dataset (UCI). It is intended as a portfolio demonstration. No proprietary data, client data, or personal data is used or stored.
+AI-generated responses are produced via the Google Gemini API using anonymised, aggregated scoring results only. Voice notes recorded in the Voice Logger tab are transcribed locally using OpenAI Whisper and are never transmitted to an external server. No audio data is persisted beyond the current session unless explicitly saved by the user.
