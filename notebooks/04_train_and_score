@@ -1,0 +1,175 @@
+# ============================================================
+# Notebook  : 04_train_and_score
+# Layer     : ML · Serving
+# Purpose   : Read Gold → train RandomForest → evaluate AUC
+#             → write predictions Delta table
+# Runs on   : Databricks Community Edition (DBR 14.x)
+# Pipeline  : 01 → 02 → 03 → 04  ← this notebook
+# Depends on: 03_gold_features must run first
+#
+# Output schema (ai4i_predictions):
+#   udi             INT
+#   machine_failure INT     (ground truth label)
+#   prediction      DOUBLE  (0.0 or 1.0 — Spark ML outputs double)
+#   probability     VECTOR  (index 0 = P(no failure), index 1 = P(failure))
+#
+# After running: export predictions table to predictions.csv
+# for the Streamlit dashboard.
+# ============================================================
+
+from pyspark.ml.classification import RandomForestClassifier
+from pyspark.ml.evaluation import BinaryClassificationEvaluator
+from pyspark.sql import functions as F
+
+# ── Config ───────────────────────────────────────────────────────
+SCHEMA     = "ai4i2020_demo_db"
+GOLD_TABLE = f"{SCHEMA}.ai4i_gold_features"
+PRED_TABLE = f"{SCHEMA}.ai4i_predictions"
+
+# Model hyperparameters
+NUM_TREES  = 80
+MAX_DEPTH  = 8
+SEED       = 42
+TEST_SPLIT = 0.2
+
+spark.sql(f"USE {SCHEMA}")
+
+# ── Load Gold features ───────────────────────────────────────────
+gold = spark.table(GOLD_TABLE)
+print(f"[Train] Gold rows={gold.count()}")
+
+# ── Train / test split ───────────────────────────────────────────
+train, test = gold.randomSplit([1 - TEST_SPLIT, TEST_SPLIT], seed=SEED)
+train_count = train.count()
+test_count  = test.count()
+print(f"[Train] train_rows={train_count}  test_rows={test_count}")
+
+if train_count == 0 or test_count == 0:
+    raise ValueError("[Train] Train/test split produced an empty set — check Gold table")
+
+# ── Train RandomForest ───────────────────────────────────────────
+# RandomForest chosen for:
+# - Handles class imbalance well (failure rate ~3.4%)
+# - Probability calibration via vote averaging
+# - Feature importance out of the box
+rf = RandomForestClassifier(
+    labelCol="machine_failure",
+    featuresCol="features",
+    numTrees=NUM_TREES,
+    maxDepth=MAX_DEPTH,
+    seed=SEED,
+)
+
+print(f"[Train] Training RandomForest: numTrees={NUM_TREES}  maxDepth={MAX_DEPTH}…")
+rf_model = rf.fit(train)
+print("[Train] ✅ Model trained")
+
+# Feature importance (top 5)
+importances = list(enumerate(rf_model.featureImportances.toArray()))
+top5 = sorted(importances, key=lambda x: x[1], reverse=True)[:5]
+print(f"[Train] Top 5 feature importances: {top5}")
+
+# ── Predict on test set ──────────────────────────────────────────
+predictions = rf_model.transform(test)
+
+# ── Evaluate ─────────────────────────────────────────────────────
+evaluator = BinaryClassificationEvaluator(
+    labelCol="machine_failure",
+    rawPredictionCol="rawPrediction",
+    metricName="areaUnderROC",
+)
+auc = evaluator.evaluate(predictions)
+print(f"[Eval] AUC-ROC: {auc:.4f}")
+
+# Confusion matrix
+cm = (predictions
+      .groupBy("machine_failure", "prediction")
+      .count()
+      .orderBy("machine_failure", "prediction"))
+
+print("[Eval] Confusion matrix:")
+for r in cm.collect():
+    d = r.asDict()
+    label = "actual=FAILURE" if d["machine_failure"] == 1 else "actual=OK     "
+    pred  = "pred=FAILURE" if d["prediction"] == 1.0 else "pred=OK     "
+    print(f"  {label}  {pred}  count={d['count']}")
+
+# Derived metrics
+tp = predictions.filter((F.col("prediction")==1)&(F.col("machine_failure")==1)).count()
+fp = predictions.filter((F.col("prediction")==1)&(F.col("machine_failure")==0)).count()
+fn = predictions.filter((F.col("prediction")==0)&(F.col("machine_failure")==1)).count()
+tn = predictions.filter((F.col("prediction")==0)&(F.col("machine_failure")==0)).count()
+
+precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+recall    = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+f1        = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+print(f"[Eval] Precision={precision:.4f}  Recall={recall:.4f}  F1={f1:.4f}")
+print(f"[Eval] TP={tp}  FP={fp}  FN={fn}  TN={tn}")
+
+if fn > 0:
+    print(f"[Eval] ⚠ {fn} false negative(s): real failures the model missed.")
+
+# ── Build serving dataframe ──────────────────────────────────────
+# IMPORTANT: keep prediction as DOUBLE (Spark ML outputs 0.0/1.0)
+# probability column: index 0 = P(no failure), index 1 = P(failure)
+serving = predictions.select(
+    F.col("udi").cast("int").alias("udi"),
+    F.col("machine_failure").cast("int").alias("machine_failure"),
+    F.col("prediction").cast("double").alias("prediction"),
+    F.col("probability").alias("probability"),
+)
+
+# ── Write predictions table ──────────────────────────────────────
+(serving.write
+    .mode("overwrite")
+    .format("delta")
+    .option("overwriteSchema", "true")   # robust to schema changes across runs
+    .saveAsTable(PRED_TABLE))
+
+written = spark.table(PRED_TABLE).count()
+print(f"[Serve] ✅ Wrote {PRED_TABLE}  rows={written}")
+
+if written != test_count:
+    print(f"[Serve] ⚠ Row count differs from test set: written={written}  test={test_count}")
+
+# ── Export CSV for Streamlit dashboard ───────────────────────────
+# Run this cell to generate predictions.csv for the Streamlit app.
+# Then download via the displayHTML link below and commit to data/predictions.csv
+
+import pandas as pd
+import base64
+
+pdf = spark.table(PRED_TABLE).toPandas()
+
+# Extract P(failure) from DenseVector into a plain float column
+pdf["prob_failure"] = pdf["probability"].apply(lambda v: float(list(v)[1]))
+pdf = pdf.drop(columns=["probability"])
+
+pdf.to_csv("/tmp/predictions.csv", index=False)
+print(f"[Export] Saved /tmp/predictions.csv  rows={len(pdf)}")
+
+with open("/tmp/predictions.csv", "rb") as f:
+    b64 = base64.b64encode(f.read()).decode()
+
+displayHTML(f"""
+<div style="font-family:monospace;padding:16px;background:#1a1a2e;border-radius:8px">
+  <p style="color:#f5a623;margin:0 0 12px;font-size:14px">
+    ✅ Predictions ready — {len(pdf):,} rows
+    &nbsp;|&nbsp; AUC: {auc:.4f}
+    &nbsp;|&nbsp; F1: {f1:.4f}
+  </p>
+  <a href="data:text/csv;base64,{b64}"
+     download="predictions.csv"
+     style="display:inline-block;padding:10px 22px;background:#f5a623;
+            color:#000;border-radius:6px;text-decoration:none;
+            font-weight:700;font-size:13px">
+    ↓ Download predictions.csv
+  </a>
+  <p style="color:#888;margin:12px 0 0;font-size:12px">
+    Save to: your-repo/data/predictions.csv → git commit → Streamlit auto-updates
+  </p>
+</div>
+""")
+
+print("[Train] Done.")

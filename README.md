@@ -1,156 +1,122 @@
-# Predictive Maintenance (PdM) — AI4I 2020
+# Predictive Maintenance Pipeline · AI4I 2020
 
-End-to-end predictive maintenance pipeline trained on the AI4I 2020 dataset.  
-The project includes feature engineering, model training (Logistic Regression or HistGradientBoosting), optional probability calibration, and top-K alerting for maintenance capacity planning. A Streamlit UI is provided for batch scoring and interactive review.
+End-to-end data engineering and ML pipeline built on Databricks, with an AI-powered Streamlit dashboard for batch scoring, top-K alerting, and natural language analysis via Gemini 2.0 Flash.
 
----
+## Live Demo
 
-## What this project does
+[predmaint.streamlit.app](https://your-app.streamlit.app) ← update after deploy
 
-- **Input**: AI4I 2020-style sensor data (CSV)
-- **Output**:
-  - A trained model artifact (`artifacts/pdm_model.joblib`)
-  - Metadata report (`artifacts/pdm_meta.json`)
-  - Batch scoring output (via CLI or Streamlit) with:
-    - `p_failure` (predicted probability)
-    - `rank` (descending risk rank)
-    - `alert_topk` (True for top-K items)
-    - engineered features (`TempDiff`, `Torque_x_RPM`)
-
----
-
-## Repository Structure
-
-```text
-Predictive-maintenance/
-├─ .gitignore
-├─ README.md
-├─ requirements.txt
-├─ app.py                   # Streamlit UI 
-├─ artifacts/               # generated 
-├─ data/                    # local datasets
-├─ notebooks/
-│  └─ notebook.ipynb
-├─ src/
-│  ├─ __init__.py
-│  ├─ config.py
-│  ├─ features.py
-│  ├─ metrics.py
-│  ├─ predict.py
-│  └─ train.py
-└─ venv/                     
-```
-## Setup
-### 1) Create and activate a virtual environment
+## Architecture
 
 ```
-python -m venv venv
-.\venv\Scripts\Activate.ps1
+Raw CSV (UCI)
+    ↓
+01_bronze_ingest    →  ai4i_bronze_raw      (Delta)
+    ↓
+02_silver_clean     →  ai4i_silver_clean    (Delta · typed · validated)
+    ↓
+03_gold_features    →  ai4i_gold_features   (Delta · ML-ready feature vectors)
+    ↓
+04_train_and_score  →  ai4i_predictions     (Delta · RF predictions + probabilities)
+    ↓
+predictions.csv     →  Streamlit Dashboard  (top-K alerts · AI explanations)
 ```
 
-### 2) Install dependencies
+## Stack
 
-```
+| Layer | Technology |
+|---|---|
+| Orchestration | Databricks Community Edition · DBR 14.x |
+| Storage | Delta Lake |
+| Processing | PySpark · Spark ML |
+| Model | RandomForest · 80 trees · depth 8 |
+| AI Assistant | Google Gemini 2.0 Flash |
+| Dashboard | Streamlit · Plotly |
+
+## Notebooks
+
+| Notebook | Layer | Description |
+|---|---|---|
+| `01_bronze_ingest.py` | Bronze | Downloads AI4I 2020 CSV from UCI, sanitizes column names, writes Delta table. Idempotent — skips if row count matches. |
+| `02_silver_clean.py` | Silver | Enforces schema types, runs 5 data quality checks (nulls, duplicates, label distribution, sensor ranges), writes Delta table. |
+| `03_gold_features.py` | Gold | Spark ML pipeline: StringIndexer → OneHotEncoder (machine type) → VectorAssembler. Outputs feature vectors for ML. |
+| `04_train_and_score.py` | ML · Serve | Trains RandomForest, evaluates AUC/F1/confusion matrix, writes predictions Delta table, exports predictions.csv with download button. |
+
+## Dashboard Features
+
+- **Top-K Alerts** — ranked table of highest-risk machines with inline probability bars
+- **AI Machine Explainer** — select any UDI → Gemini explains risk and recommends action
+- **AI Shift Report** — one-click maintenance briefing for the current shift
+- **Ask the Data** — natural language questions answered by Gemini from the scoring results
+- **Risk Distribution** — probability histogram, tier breakdown, calibration check
+- **Model Performance** — confusion matrix, precision/recall/F1, false negative warnings
+- **Raw Scores** — filterable full prediction table with CSV export
+
+## Dataset
+
+[AI4I 2020 Predictive Maintenance Dataset](https://archive.ics.uci.edu/ml/datasets/AI4I+2020+Predictive+Maintenance+Dataset)
+- 10,000 records · 14 features · ~3.4% failure rate
+- Features: air/process temperature, rotational speed, torque, tool wear, 5 failure mode flags
+
+## Running Locally
+
+```bash
+git clone https://github.com/yourname/predmaint
+cd predmaint
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-```
 
-## Data and Schema
+# Add your Gemini key
+echo "GEMINI_API_KEY=AIza..." > .env
 
-### Required input columns (minimum for scoring)
-
-- `Type`
-- `Air temperature [K]`
-- `Process temperature [K]`
-- `Rotational speed [rpm]`
-- `Torque [Nm]`
-- `Tool wear [min]`
-
-### Engineered features (computed automatically)
-
-- **TempDiff** = `Process temperature [K] - Air temperature [K]`
-- **Torque_x_RPM** = `Torque [Nm] * Rotational speed [rpm]`
-
-### Training target
-
-- `Machine failure` (binary)
-
-### Optional columns
-
-If present, the pipeline drops known non-feature/leakage columns (e.g., identifiers and failure-mode columns) based on configuration.
-
----
-
-## Configuration
-
-Defaults are defined in `src/config.py` via `TrainConfig`.
-
-### Key settings
-
-- `model_type`: `"hgb"` (default) or `"lr"`
-- `calibrate`: `True/False`
-- `calibration_method`: `"isotonic"` or `"sigmoid"`
-- `decision_policy`: `"topk"` or `"f1"`
-- `topk_k`: maintenance capacity per cycle (e.g., `50`)
-
-
-## Train (CLI)
-
-### Run training from the repository root
-```powershell
-python -m src.train
-```
-
-## Training outputs
-
-- artifacts/pdm_model.joblib
-- artifacts/pdm_meta.json
-
-## Score (CLI)
-
-### Score a batch CSV and create ranked output
-
-```powershell
-python -m src.predict --data-path data/raw/ai4i.csv --topk 50
-```
-
-### Scoring output
-
-- `artifacts/pdm_scored.csv`
-
-### Columns added during scoring
-
-- `p_failure` — predicted probability of failure
-- `rank` — descending risk rank (**1 = highest risk**)
-- `alert_topk` — `True` for the **Top-K** selected records
-- `TempDiff`, `Torque_x_RPM` — engineered features for interpretability
-
-## Streamlit UI
-
-### Run the UI from the repository root
-
-```powershell
 streamlit run app.py
 ```
 
-### Expected behavior
+## Updating Data
 
-- Loads the trained model from `artifacts/pdm_model.joblib`
-- Scores an uploaded CSV using the same feature engineering and strict schema checks
-- Supports filtering and exporting scored results
+After each Databricks pipeline run:
 
-## Evaluation and Operational Use
+1. Run the export cell in `04_train_and_score.py`
+2. Download `predictions.csv`
+3. Copy to `data/predictions.csv`
+4. `git add data/predictions.csv && git commit -m "update predictions" && git push`
+5. Streamlit Cloud auto-redeploys in ~30 seconds
 
-### Reported model metrics
+## Deploying to Streamlit Cloud
 
-- PR-AUC and ROC-AUC are recorded in `artifacts/pdm_meta.json`
+1. Push repo to GitHub
+2. Go to [share.streamlit.io](https://share.streamlit.io) → New app → select repo
+3. Main file: `app.py`
+4. Settings → Secrets → add:
+   ```toml
+   GEMINI_API_KEY = "AIza..."
+   ```
+5. Deploy
 
-### Capacity-aware policy (Top-K)
+## Model Results
 
-- Each scoring cycle flags **K** records (ties may affect cutoff behavior)
-- `precision@K` and `recall@K` quantify the operational trade-off for a given capacity
+| Metric | Value |
+|---|---|
+| AUC-ROC | update after run |
+| F1 Score | update after run |
+| Precision | update after run |
+| Recall | update after run |
 
-# 👥 Contributors
+## Project Structure
 
-This is a personal project developed and maintained by:
-
-- **Welederufeal Tadege** — [LinkedIn](https://www.linkedin.com/in/) | [GitHub](https://github.com/welde2001-bot)
+```
+predmaint/
+├── app.py                       Streamlit dashboard
+├── requirements.txt
+├── README.md
+├── .gitignore
+├── notebooks/
+│   ├── 01_bronze_ingest.py
+│   ├── 02_silver_clean.py
+│   ├── 03_gold_features.py
+│   └── 04_train_and_score.py
+├── data/
+│   └── predictions.csv          exported from Databricks
+└── .streamlit/
+    └── config.toml              dark theme
+```

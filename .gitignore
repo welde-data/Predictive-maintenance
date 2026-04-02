@@ -1,27 +1,29 @@
-__pycache__/
-*.py[cod]
-*$py.class
+# Credentials 
+*.env
 
-.venv/
+# Python
 venv/
-env/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
 
-.vscode/
-.idea/
-
+# OS
 .DS_Store
 Thumbs.db
 
-artifacts/
-*.joblib
-*.pkl
-*.pickle
-.streamlit/
+# IDE
+.vscode/
+.idea/
+*.swp
 
-build/
-dist/
-*.egg-info/
+# Jupyter 
+.ipynb_checkpoints/
 
-.coverage
-htmlcov/
-.pytest_cache/
+# Delta / Spark local artifacts
+derby.log
+metastore_db/
+spark-warehouse/
+.streamlit/secrets.toml

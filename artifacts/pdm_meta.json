@@ -1,0 +1,166 @@
+{
+  "data_path": "data\\raw\\ai4i.csv",
+  "model_type": "hgb",
+  "calibrated": true,
+  "policy": "topk",
+  "topk_k": 50,
+  "seed": 42,
+  "metrics": {
+    "pr_auc": 0.9069876185020286,
+    "roc_auc": 0.9791438314456217
+  },
+  "decision_report": {
+    "k": 50,
+    "cutoff_score": 0.7151300236406618,
+    "selected": 50,
+    "num_ge_cutoff": 50,
+    "confusion_matrix": [
+      [
+        1932,
+        0
+      ],
+      [
+        18,
+        50
+      ]
+    ],
+    "classification_report": {
+      "0": {
+        "precision": 0.9907692307692307,
+        "recall": 1.0,
+        "f1-score": 0.9953632148377125,
+        "support": 1932.0
+      },
+      "1": {
+        "precision": 1.0,
+        "recall": 0.7352941176470589,
+        "f1-score": 0.847457627118644,
+        "support": 68.0
+      },
+      "accuracy": 0.991,
+      "macro avg": {
+        "precision": 0.9953846153846153,
+        "recall": 0.8676470588235294,
+        "f1-score": 0.9214104209781783,
+        "support": 2000.0
+      },
+      "weighted avg": {
+        "precision": 0.9910830769230768,
+        "recall": 0.991,
+        "f1-score": 0.9903344248552642,
+        "support": 2000.0
+      }
+    }
+  },
+  "cutoff_or_threshold": 0.7151300236406618,
+  "precision_at_k": 1.0,
+  "recall_at_k": 0.7352941176470589,
+  "k_sweep": [
+    {
+      "k": 10,
+      "precision": 1.0,
+      "recall": 0.14705882352941177,
+      "tp": 10,
+      "fp": 0,
+      "fn": 58,
+      "tn": 1932,
+      "cutoff_score": 0.9901960784313726,
+      "num_ge_cutoff": 11
+    },
+    {
+      "k": 20,
+      "precision": 1.0,
+      "recall": 0.29411764705882354,
+      "tp": 20,
+      "fp": 0,
+      "fn": 48,
+      "tn": 1932,
+      "cutoff_score": 0.9831038798498123,
+      "num_ge_cutoff": 33
+    },
+    {
+      "k": 30,
+      "precision": 1.0,
+      "recall": 0.4411764705882353,
+      "tp": 30,
+      "fp": 0,
+      "fn": 38,
+      "tn": 1932,
+      "cutoff_score": 0.9831038798498123,
+      "num_ge_cutoff": 33
+    },
+    {
+      "k": 40,
+      "precision": 1.0,
+      "recall": 0.5882352941176471,
+      "tp": 40,
+      "fp": 0,
+      "fn": 28,
+      "tn": 1932,
+      "cutoff_score": 0.9323017408123792,
+      "num_ge_cutoff": 41
+    },
+    {
+      "k": 50,
+      "precision": 1.0,
+      "recall": 0.7352941176470589,
+      "tp": 50,
+      "fp": 0,
+      "fn": 18,
+      "tn": 1932,
+      "cutoff_score": 0.7151300236406618,
+      "num_ge_cutoff": 50
+    },
+    {
+      "k": 75,
+      "precision": 0.7866666666666666,
+      "recall": 0.8676470588235294,
+      "tp": 59,
+      "fp": 16,
+      "fn": 9,
+      "tn": 1916,
+      "cutoff_score": 0.22274784039489923,
+      "num_ge_cutoff": 75
+    },
+    {
+      "k": 100,
+      "precision": 0.6,
+      "recall": 0.8823529411764706,
+      "tp": 60,
+      "fp": 40,
+      "fn": 8,
+      "tn": 1892,
+      "cutoff_score": 0.11863711001642037,
+      "num_ge_cutoff": 100
+    }
+  ],
+  "features": {
+    "categorical": [
+      "Type"
+    ],
+    "numerical": [
+      "Air temperature [K]",
+      "Process temperature [K]",
+      "Rotational speed [rpm]",
+      "Torque [Nm]",
+      "Tool wear [min]",
+      "TempDiff",
+      "Torque_x_RPM"
+    ],
+    "engineered": [
+      "TempDiff",
+      "Torque_x_RPM"
+    ],
+    "dropped": [
+      "UDI",
+      "Product ID",
+      "TWF",
+      "HDF",
+      "PWF",
+      "OSF",
+      "RNF",
+      "Machine failure"
+    ],
+    "target": "Machine failure"
+  }
+}

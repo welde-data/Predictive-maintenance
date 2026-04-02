@@ -1,0 +1,117 @@
+# ============================================================
+# Notebook  : 03_gold_features
+# Layer     : Gold
+# Purpose   : Read Silver → Spark ML feature pipeline
+#             (StringIndexer → OneHotEncoder → VectorAssembler)
+#             → write Gold features Delta table
+# Runs on   : Databricks Community Edition (DBR 14.x)
+# Pipeline  : 01 → 02 → 03 → 04
+# Depends on: 02_silver_clean must run first
+#
+# Output schema:
+#   udi         INT
+#   product_id  STRING
+#   machine_failure INT   (label column for ML)
+#   features    VECTOR   (assembled ML feature vector)
+# ============================================================
+
+from pyspark.ml import Pipeline
+from pyspark.ml.feature import StringIndexer, OneHotEncoder, VectorAssembler
+from pyspark.sql import functions as F
+
+# ── Config ───────────────────────────────────────────────────────
+SCHEMA       = "ai4i2020_demo_db"
+SILVER_TABLE = f"{SCHEMA}.ai4i_silver_clean"
+GOLD_TABLE   = f"{SCHEMA}.ai4i_gold_features"
+EXPECTED_ROWS = 10_000
+
+spark.sql(f"USE {SCHEMA}")
+
+# ── Read Silver ──────────────────────────────────────────────────
+df = spark.table(SILVER_TABLE)
+print(f"[Gold] Silver rows={df.count()}  cols={df.columns}")
+
+# ── Feature definitions ──────────────────────────────────────────
+LABEL_COL = "machine_failure"
+
+# Numeric features — all continuous sensor readings + binary failure flags
+NUMERIC_COLS = [
+    "air_temperature_k",       # ambient temperature (K)
+    "process_temperature_k",   # process temperature (K)
+    "rotational_speed_rpm",    # spindle speed (RPM)
+    "torque_nm",               # torque (Nm)
+    "tool_wear_min",           # accumulated tool wear (minutes)
+    "twf",                     # tool wear failure flag
+    "hdf",                     # heat dissipation failure flag
+    "pwf",                     # power failure flag
+    "osf",                     # overstrain failure flag
+    "rnf",                     # random failure flag
+]
+
+# Categorical feature — machine type (L/M/H quality variant)
+# → StringIndexer → OneHotEncoder before assembly
+CATEGORICAL_COL = "type"
+
+# ── Feature pipeline ─────────────────────────────────────────────
+# Stage 1: encode type string → integer index
+type_indexer = StringIndexer(
+    inputCol=CATEGORICAL_COL,
+    outputCol="type_idx",
+    handleInvalid="keep",   # unseen types → extra index (robust to new data)
+)
+
+# Stage 2: one-hot encode the index (drops reference category automatically)
+type_ohe = OneHotEncoder(
+    inputCols=["type_idx"],
+    outputCols=["type_ohe"],
+)
+
+# Stage 3: assemble all features into a single DenseVector
+assembler = VectorAssembler(
+    inputCols=NUMERIC_COLS + ["type_ohe"],
+    outputCol="features",
+    handleInvalid="keep",
+)
+
+pipeline = Pipeline(stages=[type_indexer, type_ohe, assembler])
+
+print("[Gold] Fitting feature pipeline…")
+feat_model = pipeline.fit(df)
+
+gold = feat_model.transform(df).select(
+    "udi",
+    "product_id",
+    LABEL_COL,
+    "features",
+)
+
+# ── Validation ───────────────────────────────────────────────────
+rows = gold.count()
+print(f"[Gold] rows={rows}")
+
+if rows != EXPECTED_ROWS:
+    raise ValueError(f"[Gold] Unexpected row count {rows} (expected {EXPECTED_ROWS})")
+
+# Verify feature vector is non-null
+null_features = gold.filter(F.col("features").isNull()).count()
+if null_features > 0:
+    raise ValueError(f"[Gold] {null_features} rows have null feature vector")
+
+# Show feature vector size
+sample_vec = gold.select("features").first()[0]
+print(f"[Gold] Feature vector size: {len(sample_vec)}  "
+      f"(expected: {len(NUMERIC_COLS)} numeric + OHE dims for type)")
+
+# ── Write Gold ───────────────────────────────────────────────────
+(gold.write
+    .mode("overwrite")
+    .format("delta")
+    .saveAsTable(GOLD_TABLE))
+
+written = spark.table(GOLD_TABLE).count()
+print(f"[Gold] ✅ Wrote {GOLD_TABLE}  rows={written}")
+
+if written != rows:
+    raise ValueError(f"[Gold] Row count mismatch: transformed={rows}  written={written}")
+
+print("[Gold] Done.")

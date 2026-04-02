@@ -69,3 +69,10 @@ tzdata==2025.3
 urllib3==2.6.2
 watchdog==6.0.0
 wcwidth==0.2.14
+streamlit>=1.32.0
+pandas>=2.0.0
+plotly>=5.20.0
+databricks-connect>=14.0.0 
+google-generativeai>=0.8.0  # optional — only needed for live Databricks connection
+openai-whisper
+audio-recorder-streamlit
