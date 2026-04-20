@@ -1,6 +1,6 @@
 """
 Predictive Maintenance Dashboard · AI4I 2020
-Stack : Databricks · Delta Lake · PySpark ML · Gemini 2.0 Flash · Streamlit · Whisper
+Stack : Databricks · Delta Lake · PySpark ML · Gemini 2.5 Flash · Streamlit · Whisper
 Run   : streamlit run app.py
 Secrets: GEMINI_API_KEY = "AIza..."
 Install: pip install openai-whisper audio-recorder-streamlit reportlab
@@ -19,7 +19,7 @@ try:
     _KEY = os.getenv("GEMINI_API_KEY", "")
     if _KEY:
         genai.configure(api_key=_KEY)
-        _GEMINI = genai.GenerativeModel("gemini-2.0-flash")
+        _GEMINI = genai.GenerativeModel("gemini-2.5-flash")
         GEMINI_OK = True
     else:
         GEMINI_OK = False
